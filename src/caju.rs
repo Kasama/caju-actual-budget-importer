@@ -141,8 +141,8 @@ impl CajuClient {
 
     pub async fn login(
         &mut self,
-        existing_auth: String,
-        refresh_token: String,
+        existing_auth: &str,
+        refresh_token: &str,
     ) -> anyhow::Result<LoginResponse> {
         let resp: LoginResponse = self
             .client

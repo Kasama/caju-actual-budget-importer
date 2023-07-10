@@ -1,6 +1,8 @@
-use std::time::Duration;
+use std::str::FromStr;
 
+use chrono::Datelike;
 use clap::Parser;
+use secrecy::{Secret, ExposeSecret};
 
 use crate::caju::CajuClient;
 use crate::ofx::Ofx;
@@ -10,16 +12,37 @@ mod ofx;
 
 #[derive(Parser)]
 struct App {
-    #[arg(env = "BEARER_TOKEN")]
-    bearer_token: String,
-    #[arg(env = "REFRESH_TOKEN")]
-    refresh_token: String,
-    #[arg(env = "BASE_URL")]
+    #[arg(long = "base-url", env = "BASE_URL", default_value = "https://apigw.caju.com.br")]
+    // Base url of the Caju API.
     base_url: String,
-    #[arg(env = "USER_ID")]
+
+    #[arg(long = "bearer-token", env = "BEARER_TOKEN")]
+    /// Bearer token for the Caju API. Can be obtained from a MITM proxy when opening the Caju
+    /// mobile app.
+    bearer_token: Secret<String>,
+
+    #[arg(long = "refresh-token", env = "REFRESH_TOKEN")]
+    /// Refresh token for the Caju API. Can be obtained from a MITM proxy when opening the Caju
+    /// mobile app.
+    refresh_token: Secret<String>,
+
+    #[arg(long = "user-id", env = "USER_ID")]
+    // User id of your caju user. Can be obtained from a MITM proxy when opening the Caju app.
     user_id: String,
-    #[arg(env = "EMPLOYEE_ID")]
+
+    #[arg(long = "employee-id", env = "EMPLOYEE_ID")]
+    // Employee id of your caju account. Can be obtained from a MITM proxy when opening the Caju app.
     employee_id: String,
+
+    /// Month to get statement for. Accepts numbers or english month names.
+    month: String,
+
+    /// Year to get statement for. Default is current year according to local timezone.
+    year: Option<i32>,
+
+    #[arg(short = 'o', long = "output")]
+    /// The file name to output OFX to. Default is stdout.
+    filename: Option<String>,
 }
 
 #[tokio::main]
@@ -28,59 +51,72 @@ async fn main() -> anyhow::Result<()> {
 
     let app = App::parse();
 
+    let month = try_into_month(&app.month).unwrap_or_else(|_| {
+        chrono::Month::try_from(chrono::Local::now().month() as u8)
+            .expect("month from Local::now() should be valid")
+    });
+    let year = app.year.unwrap_or_else(|| chrono::Local::now().year());
+
     let mut client = CajuClient::new(app.base_url, app.user_id, app.employee_id)?;
-    client.login(app.bearer_token, app.refresh_token).await?;
+    client.login(app.bearer_token.expose_secret(), app.refresh_token.expose_secret()).await?;
     let client = client;
 
-    let months = vec![
-        (2021, chrono::Month::April),
-        (2021, chrono::Month::May),
-        (2021, chrono::Month::June),
-        (2021, chrono::Month::July),
-        (2021, chrono::Month::August),
-        (2021, chrono::Month::September),
-        (2021, chrono::Month::October),
-        (2021, chrono::Month::November),
-        (2021, chrono::Month::December),
-        (2022, chrono::Month::January),
-        (2022, chrono::Month::February),
-        (2022, chrono::Month::March),
-        (2022, chrono::Month::April),
-        (2022, chrono::Month::May),
-        (2022, chrono::Month::June),
-        (2022, chrono::Month::July),
-        (2022, chrono::Month::August),
-        (2022, chrono::Month::September),
-        (2022, chrono::Month::October),
-        (2022, chrono::Month::November),
-        (2022, chrono::Month::December),
-        (2023, chrono::Month::January),
-        (2023, chrono::Month::February),
-        (2023, chrono::Month::March),
-        (2023, chrono::Month::April),
-        (2023, chrono::Month::May),
-        (2023, chrono::Month::June),
-    ];
+    let statement = client.get_month_statement(Some(year), month).await?;
 
-    for (year, month) in months {
-        let statement = client.get_month_statement(Some(year), month).await?;
+    let ofx: Ofx = match statement.try_into() {
+        Ok(i) => i,
+        Err(e) => {
+            eprintln!("Error for {}/{}: {}", month.name(), year, e);
+            return Err(e);
+        }
+    };
 
-        let ofx: Ofx = match statement.try_into() {
-            Ok(i) => i,
-            Err(e) => {
-                println!("Error for {}/{}: {}", month.name(), year, e);
-                continue;
-            },
-        };
+    match app.filename {
+        Some(ref fname) => Box::new(
+            std::fs::OpenOptions::new()
+                .truncate(true)
+                .create(true)
+                .write(true)
+                .open(fname)?,
+        ) as Box<dyn std::io::Write>,
+        None => Box::new(std::io::stdout()) as Box<dyn std::io::Write>,
+    }
+    .write_all(ofx.to_ofx()?.as_bytes())?;
 
-        let filename = format!("caju-{}-{}.ofx", year, month.name());
-
-        std::fs::write(&filename, ofx.to_ofx()?)?;
-
-        println!("Wrote ofx for {}", filename);
-
-        tokio::time::sleep(Duration::from_secs(1)).await;
+    if let Some(ref filename) = app.filename {
+        println!("Wrote ofx for {}/{} at {}", month.name(), year, filename);
     }
 
     Ok(())
+}
+
+fn try_into_month(input: &str) -> anyhow::Result<chrono::Month> {
+    let parsed = match chrono::Month::from_str(input) {
+        Ok(m) => m,
+        Err(_) => match input.parse::<u8>() {
+            Ok(month_number) => chrono::Month::try_from(month_number)?,
+            Err(e) => Err(e)?,
+        },
+    };
+
+    Ok(parsed)
+}
+
+#[cfg(test)]
+mod test {
+
+    use crate::try_into_month;
+
+    #[test]
+    fn parse_months() -> Result<(), anyhow::Error> {
+        let tests = ["1", "january", "January", "JANUARY", "JanUaRY"];
+
+        let results = tests.map(try_into_month);
+
+        println!("{:?}", results);
+
+        results.into_iter().collect::<Result<Vec<_>, _>>()?;
+
+        Ok(())
+    }
 }
