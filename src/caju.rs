@@ -64,10 +64,19 @@ pub struct StatementItem {
     id: Option<String>,
     action: Option<String>,
     amount: Option<i64>,
+    status: Option<StatementItemStatus>,
     #[serde(deserialize_with = "from_timestamp")]
     created_at: NaiveDateTime,
     data: Option<StatementItemData>,
     normalized_name: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub enum StatementItemStatus {
+    #[serde(rename = "CONFIRMED")]
+    Confirmed,
+    #[serde(rename = "REFUNDED")]
+    Refunded,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -288,6 +297,7 @@ impl TryFrom<Vec<StatementItem>> for Ofx {
                             end: end.format("%Y%m%d000000[-3:BRT]").to_string(),
                             transactions: value
                                 .into_iter()
+                                .filter(|statement| statement.status == Some(StatementItemStatus::Confirmed))
                                 .map(|statement| {
                                     OfxTransactionVariant::Transaction(crate::ofx::OfxTransaction {
                                         description: statement
