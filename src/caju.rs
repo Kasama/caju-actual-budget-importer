@@ -77,6 +77,8 @@ pub enum StatementItemStatus {
     Confirmed,
     #[serde(rename = "REFUNDED")]
     Refunded,
+    #[serde(rename = "PENDING")]
+    Pending,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -297,7 +299,9 @@ impl TryFrom<Vec<StatementItem>> for Ofx {
                             end: end.format("%Y%m%d000000[-3:BRT]").to_string(),
                             transactions: value
                                 .into_iter()
-                                .filter(|statement| statement.status == Some(StatementItemStatus::Confirmed))
+                                .filter(|statement| {
+                                    statement.status == Some(StatementItemStatus::Confirmed)
+                                })
                                 .map(|statement| {
                                     OfxTransactionVariant::Transaction(crate::ofx::OfxTransaction {
                                         description: statement
