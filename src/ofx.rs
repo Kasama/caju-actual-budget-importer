@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename = "OFX")]
 pub struct Ofx {
     #[serde(rename = "BANKMSGSRSV1")]

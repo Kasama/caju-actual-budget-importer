@@ -30,7 +30,7 @@ pub struct StatementResponseItem {
 }
 
 struct NaiveDateTimeVisitor;
-impl<'de> serde::de::Visitor<'de> for NaiveDateTimeVisitor {
+impl serde::de::Visitor<'_> for NaiveDateTimeVisitor {
     type Value = NaiveDateTime;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -239,9 +239,10 @@ impl CajuClient {
 
         let last_day_of_month = first_day_of_month
             .checked_add_months(Months::new(1))
-            .ok_or(anyhow::anyhow!("Failed to add a month to current month"))?
-            .pred_opt()
-            .ok_or(anyhow::anyhow!("Failed to get last day"))?;
+            .ok_or(anyhow::anyhow!("Failed to add a month to current month"))?;
+        // Check if last day is exclusive or inclusive
+        // .pred_opt()
+        // .ok_or(anyhow::anyhow!("Failed to get last day"))?;
 
         let mut has_next = true;
         let mut cursor = None;

@@ -1,30 +1,50 @@
+use std::io::{BufRead, Write};
 use std::str::FromStr;
 
 use chrono::Datelike;
 use clap::Parser;
-use secrecy::{Secret, ExposeSecret};
+use secrecy::{ExposeSecret, SecretString};
 
 use crate::caju::CajuClient;
 use crate::ofx::Ofx;
 
+use self::flash::FlashClient;
+
 mod caju;
+mod flash;
 mod ofx;
 
 #[derive(Parser)]
 struct App {
-    #[arg(long = "base-url", env = "BASE_URL", default_value = "https://apigw.caju.com.br")]
+    #[arg(
+        long = "base-url",
+        env = "BASE_URL",
+        default_value = "https://apigw.caju.com.br"
+    )]
     // Base url of the Caju API.
     base_url: String,
 
     #[arg(long = "bearer-token", env = "BEARER_TOKEN")]
     /// Bearer token for the Caju API. Can be obtained from a MITM proxy when opening the Caju
     /// mobile app.
-    bearer_token: Secret<String>,
+    bearer_token: SecretString,
 
     #[arg(long = "refresh-token", env = "REFRESH_TOKEN")]
     /// Refresh token for the Caju API. Can be obtained from a MITM proxy when opening the Caju
     /// mobile app.
-    refresh_token: Secret<String>,
+    refresh_token: SecretString,
+
+    #[arg(long = "flash-username", env = "FLASH_USERNAME")]
+    flash_username: String,
+
+    #[arg(long = "flash-password", env = "FLASH_PASSWORD")]
+    flash_password: SecretString,
+
+    #[arg(long = "flash-override-token", env = "FLASH_AUTH_OVERRIDE_TOKEN")]
+    flash_override_token: Option<String>,
+
+    #[arg(long = "flash-company", env = "FLASH_COMPANY_ID")]
+    flash_company_id: String,
 
     #[arg(long = "user-id", env = "USER_ID")]
     // User id of your caju user. Can be obtained from a MITM proxy when opening the Caju app.
@@ -45,6 +65,11 @@ struct App {
     filename: Option<String>,
 }
 
+enum Providers {
+    Flash,
+    Caju,
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv()?;
@@ -57,17 +82,63 @@ async fn main() -> anyhow::Result<()> {
     });
     let year = app.year.unwrap_or_else(|| chrono::Local::now().year());
 
-    let mut client = CajuClient::new(app.base_url, app.user_id, app.employee_id)?;
-    client.login(app.bearer_token.expose_secret(), app.refresh_token.expose_secret()).await?;
-    let client = client;
+    let provider = Providers::Flash;
 
-    let statement = client.get_month_statement(Some(year), month).await?;
+    let ofx: Ofx = match provider {
+        Providers::Flash => {
+            let client = match app.flash_override_token {
+                Some(token) => {
+                    println!("Using override token");
+                    FlashClient::auth_override(
+                        flash::auth::FlashAuthentication { token },
+                        app.flash_company_id,
+                        app.employee_id,
+                    )
+                }
+                _ => {
+                    let mut client = FlashClient::new(
+                        app.flash_username.to_string(),
+                        app.flash_password.clone(),
+                        app.flash_company_id,
+                        app.employee_id,
+                    );
 
-    let ofx: Ofx = match statement.try_into() {
-        Ok(i) => i,
-        Err(e) => {
-            eprintln!("Error for {}/{}: {}", month.name(), year, e);
-            return Err(e);
+                    client.initiate_auth().await?;
+
+                    print!("Enter TOTP: ");
+                    std::io::stdout().flush()?;
+
+                    let totp = {
+                        let stdin = std::io::stdin().lock();
+                        let line = stdin.lines().next().ok_or(anyhow::anyhow!("no input"))??;
+                        line.trim().to_string()
+                    };
+
+                    client.finish_login(&totp).await?;
+
+                    client
+                }
+            };
+
+            client
+                .get_month_statement(Some(year), month)
+                .await?
+                .try_into()?
+        }
+        Providers::Caju => {
+            let mut client = CajuClient::new(app.base_url, app.user_id, app.employee_id)?;
+            client
+                .login(
+                    app.bearer_token.expose_secret(),
+                    app.refresh_token.expose_secret(),
+                )
+                .await?;
+            let client = client;
+
+            client
+                .get_month_statement(Some(year), month)
+                .await?
+                .try_into()?
         }
     };
 
