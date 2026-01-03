@@ -210,13 +210,19 @@ impl FlashClient {
             page_size: 100,
         };
 
-        let first_day_of_month = NaiveDate::from_ymd_opt(
+        let mut first_day_of_month = NaiveDate::from_ymd_opt(
             year.unwrap_or_else(|| chrono::Local::now().year()),
             month.number_from_month(),
             1,
         )
         .ok_or(anyhow::anyhow!("Failed to get current month"))?
         .and_time(NaiveTime::from_hms_opt(3, 0, 0).unwrap());
+
+        if first_day_of_month > chrono::Local::now().naive_local() {
+            if let Some(prev_year) = first_day_of_month.checked_sub_months(Months::new(12)) {
+                first_day_of_month = prev_year;
+            }
+        }
 
         let last_day_of_month = first_day_of_month
             .checked_add_months(Months::new(1))
@@ -250,6 +256,8 @@ impl FlashClient {
             }
         });
 
+        eprintln!("query: {:?}", &statement_request_query.to_string());
+
         let resp = self
             .client
             .get(format!("{}/person.getStatement", FLASH_BFF_URL))
@@ -264,7 +272,7 @@ impl FlashClient {
             .await?;
 
         let resp_text = resp.text().await?;
-        println!("statement response: {:?}", resp_text);
+        eprintln!("statement response: {:?}", resp_text);
         let mut resp: Vec<Response> = serde_json::from_str(&resp_text)?;
 
         let items = match resp.pop() {

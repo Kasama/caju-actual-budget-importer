@@ -1,10 +1,10 @@
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::ExposeSecret;
 use serde_json::json;
 
 use super::FlashClient;
 
 const FLASH_URL: &str = "https://corporate-card-bff.us.flashapp.services";
-const FLASH_WEB_AUTH_URL: &str = "https://hros-web-authentication-bff.us.flashapp.services";
+const FLASH_WEB_AUTH_URL: &str = "https://flashos-entrance.us.flashapp.services/v1/auth";
 const AUTH_URL: &str = "https://hros-auth.flashapp.services";
 
 const FLASH_CLIENT_ID: &str = "4r4ki1jqohppg2dko3uf7rvq13";
@@ -74,7 +74,7 @@ impl FlashClient {
             .await?;
 
         let value = response.text().await?;
-        println!("initate auth response: {:?}", value);
+        eprintln!("initate auth response: {:?}", value);
         let auth_initiate_response: InitiateAuthResponse = serde_json::from_str(&value)?;
 
         // let auth_initiate_response: InitiateAuthResponse = response.json().await?;
@@ -124,14 +124,14 @@ impl FlashClient {
             .await?;
 
         let value = response.text().await?;
-        println!("2fa auth response: {:?}", value);
+        eprintln!("2fa auth response: {:?}", value);
         let auth_response: RespondToAuthChallengeResponse = serde_json::from_str(&value)?;
 
         // let auth_response: RespondToAuthChallengeResponse = response.json().await?;
 
         let token = auth_response.authentication_result.access_token.clone();
 
-        println!("got auth token: {}", token);
+        eprintln!("got auth token: {}", token);
 
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -161,13 +161,13 @@ impl FlashClient {
 
         let resp_text = signing_employee_response.text().await?;
 
-        println!("signing employee response: {:?}", resp_text);
+        eprintln!("signing employee response: {:?}", resp_text);
 
         let resp: SignInEmployeeResponse = serde_json::from_str(&resp_text)?;
 
         let auth = resp.result.data;
 
-        println!("token: {:?}", auth.token);
+        eprintln!("token: {:?}", auth.token);
 
         self.auth = AuthState::Authenticated(auth);
 
