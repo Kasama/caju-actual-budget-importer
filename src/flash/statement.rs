@@ -256,7 +256,7 @@ impl FlashClient {
             }
         });
 
-        eprintln!("query: {:?}", &statement_request_query.to_string());
+        log::debug!("query: {:?}", &statement_request_query.to_string());
 
         let resp = self
             .client
@@ -272,7 +272,7 @@ impl FlashClient {
             .await?;
 
         let resp_text = resp.text().await?;
-        eprintln!("statement response: {:?}", resp_text);
+        log::debug!("statement response: {:?}", resp_text);
         let mut resp: Vec<Response> = serde_json::from_str(&resp_text)?;
 
         let items = match resp.pop() {

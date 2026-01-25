@@ -7,14 +7,15 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.71"
-clap = { version = "4", features = ["derive", "env"] }
 chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
 dotenvy = "0.15.7"
-serde-xml-rs = "0.6"
-rustyline = "15"
+log = "0.4"
 reqwest = { version = "0.12", features = ["json"] }
+rustyline = "15"
 secrecy = "0.10"
 serde = { version = "1", features = ["derive"] }
+serde-xml-rs = "0.6"
 serde_json = "1"
 tokio = { version = "1.28.2", features = ["full"] }
 xml-rs = "0.8"

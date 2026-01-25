@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
         Providers::Flash => {
             let client = match app.flash_override_token {
                 Some(token) => {
-                    eprintln!("Using override token");
+                    log::info!("Using override token");
                     FlashClient::auth_override(
                         flash::auth::FlashAuthentication { token },
                         app.flash_company_id,
@@ -155,7 +155,7 @@ async fn main() -> anyhow::Result<()> {
     .write_all(ofx.to_ofx()?.as_bytes())?;
 
     if let Some(ref filename) = app.filename {
-        eprintln!("Wrote ofx for {}/{} at {}", month.name(), year, filename);
+        log::info!("Wrote ofx for {}/{} at {}", month.name(), year, filename);
     }
 
     Ok(())

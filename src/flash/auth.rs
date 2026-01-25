@@ -74,7 +74,7 @@ impl FlashClient {
             .await?;
 
         let value = response.text().await?;
-        eprintln!("initate auth response: {:?}", value);
+        log::debug!("initate auth response: {:?}", value);
         let auth_initiate_response: InitiateAuthResponse = serde_json::from_str(&value)?;
 
         // let auth_initiate_response: InitiateAuthResponse = response.json().await?;
@@ -124,14 +124,15 @@ impl FlashClient {
             .await?;
 
         let value = response.text().await?;
-        eprintln!("2fa auth response: {:?}", value);
+        log::debug!("2fa auth response: {:?}", value);
         let auth_response: RespondToAuthChallengeResponse = serde_json::from_str(&value)?;
 
         // let auth_response: RespondToAuthChallengeResponse = response.json().await?;
 
         let token = auth_response.authentication_result.access_token.clone();
 
-        eprintln!("got auth token: {}", token);
+        let authorization_bearer_value = format!("Bearer {}", token);
+        log::debug!("got auth token: {}", authorization_bearer_value);
 
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -148,10 +149,11 @@ impl FlashClient {
         let signing_employee_response = self
             .client
             .post(format!("{}/trpc/signInEmployee", FLASH_WEB_AUTH_URL))
-            .bearer_auth(token)
+            .header("Authorization", authorization_bearer_value)
+            .header("Content-Type", "application/json")
             .body(
                 json!({
-                    "employeeId":self.employee_id,
+                    "employeeId": self.employee_id,
                     "companyId": self.company_id
                 })
                 .to_string(),
@@ -161,13 +163,9 @@ impl FlashClient {
 
         let resp_text = signing_employee_response.text().await?;
 
-        eprintln!("signing employee response: {:?}", resp_text);
-
         let resp: SignInEmployeeResponse = serde_json::from_str(&resp_text)?;
 
         let auth = resp.result.data;
-
-        eprintln!("token: {:?}", auth.token);
 
         self.auth = AuthState::Authenticated(auth);
 
